@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "x86.h"
 #include "syscall.h"
+static unsigned int counter = 0;
 
 // User code makes a system call with INT T_SYSCALL.
 // System call number in %eax.
@@ -19,12 +20,14 @@ fetchint(uint addr, int *ip)
 {
   struct proc *curproc = myproc();
 
-  if(addr >= curproc->vlimit || addr+4 > curproc->vlimit
-    || addr < curproc->vbase || addr+4 <= curproc->vbase)
+  if(addr >= curproc->sz || addr+4 > curproc->sz)
     return -1;
+  
   *ip = *(int*)(addr);
   return 0;
 }
+
+
 
 // Fetch the nul-terminated string at addr from the current process.
 // Doesn't actually copy the string - just sets *pp to point at it.
@@ -35,10 +38,10 @@ fetchstr(uint addr, char **pp)
   char *s, *ep;
   struct proc *curproc = myproc();
 
-  if(addr >= curproc->vlimit || addr < curproc->vbase)
+  if(addr >= curproc->sz)
     return -1;
   *pp = (char*)addr;
-  ep = (char*)curproc->vlimit;
+  ep = (char*)curproc->sz;
   for(s = *pp; s < ep; s++){
     if(*s == 0)
       return s - *pp;
@@ -64,8 +67,7 @@ argptr(int n, char **pp, int size)
  
   if(argint(n, &i) < 0)
     return -1;
-  if(size < 0 || (uint)i >= curproc->vlimit || (uint)i+size > curproc->vlimit
-    || (uint)i < curproc->vbase || (uint)i+size <= curproc->vbase)
+  if(size < 0 || (uint)i >= curproc->sz || (uint)i+size > curproc->sz)
     return -1;
   *pp = (char*)i;
   return 0;
@@ -82,6 +84,11 @@ argstr(int n, char **pp)
   if(argint(n, &addr) < 0)
     return -1;
   return fetchstr(addr, pp);
+}
+
+int
+getreadcount(void){
+  return counter;
 }
 
 extern int sys_chdir(void);
@@ -105,6 +112,12 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_getreadcount(void);
+extern int sys_gettime(void);
+extern int sys_settickets(void);
+extern int sys_getpinfo(void);
+extern int sys_mprotect(void);
+extern int sys_munprotect(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -128,7 +141,14 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_getreadcount] sys_getreadcount,
+[SYS_gettime] sys_gettime,
+[SYS_settickets] sys_settickets,
+[SYS_getpinfo] sys_getpinfo,
+[SYS_mprotect] sys_mprotect,
+[SYS_munprotect] sys_munprotect,
 };
+
 
 void
 syscall(void)
@@ -138,6 +158,9 @@ syscall(void)
 
   num = curproc->tf->eax;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+
+    if(num == SYS_read) counter++;
+    
     curproc->tf->eax = syscalls[num]();
   } else {
     cprintf("%d %s: unknown sys call %d\n",
