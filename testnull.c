@@ -11,7 +11,6 @@ main(int argc, char *argv[])
       uint * nullp = (uint*)0;
       printf(1, "null dereference: ");
       printf(1, "%x %x\n", nullp, *nullp);
-      // this process should be killed
       printf(1, "TEST FAILED\n");
       kill(ppid);
       exit();
