@@ -12,16 +12,13 @@ exec(char *path, char **argv)
 {
   char *s, *last;
   int i, off;
-  uint argc, vbase, vlimit, sp, ustack[3+MAXARG+1];
+  uint argc, sz, sp, ustack[3+MAXARG+1];
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
   struct proc *curproc = myproc();
 
-#ifdef TRACE_EXEC
-  cprintf("exec: starting\n");
-#endif
   begin_op();
 
   if((ip = namei(path)) == 0){
@@ -42,8 +39,7 @@ exec(char *path, char **argv)
     goto bad;
 
   // Load program into memory.
-  vbase = PGSIZE;  // base==limit => process vm is empty...
-  vlimit = PGSIZE; // ... take care to ensure allocuvm doesn't alloc page 0
+  sz = PGSIZE;
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, (char*)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
@@ -53,7 +49,7 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
-    if((vlimit = allocuvm(pgdir, vbase, vlimit, ph.vaddr + ph.memsz)) == 0)
+    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
@@ -66,12 +62,11 @@ exec(char *path, char **argv)
 
   // Allocate two pages at the next page boundary.
   // Make the first inaccessible.  Use the second as the user stack.
-  vlimit = PGROUNDUP(vlimit);
-  vbase = PGSIZE;
-  if((vlimit = allocuvm(pgdir, vbase, vlimit, vlimit + 2*PGSIZE)) == 0)
+  sz = PGROUNDUP(sz);
+  if((sz = allocuvm(pgdir, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
-  clearpteu(pgdir, (char*)(vlimit - 2*PGSIZE));
-  sp = vlimit;
+  clearpteu(pgdir, (char*)(sz - 2*PGSIZE));
+  sp = sz;
 
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
@@ -101,8 +96,7 @@ exec(char *path, char **argv)
   // Commit to the user image.
   oldpgdir = curproc->pgdir;
   curproc->pgdir = pgdir;
-  curproc->vbase = vbase;
-  curproc->vlimit = vlimit;
+  curproc->sz = sz;
   curproc->tf->eip = elf.entry;  // main
   curproc->tf->esp = sp;
   switchuvm(curproc);
