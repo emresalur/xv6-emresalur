@@ -14,8 +14,6 @@ main(int argc, char *argv[]) {
 	char buf[100];
 	(void) read(4, buf, 1);
     }
-    // https://wiki.osdev.org/Shutdown
-    // (void) shutdown();
 
     if (rc > 0) {
 	(void) wait();
