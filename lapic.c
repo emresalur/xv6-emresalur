@@ -228,9 +228,6 @@ cmostime(struct rtcdate *r)
   r->year += 2000;
 }
 
-// This is not the "real" UNIX time as it makes many
-// simplifying assumptions -- no leap years, months
-// that are all the same length (!)
 unsigned long unixtime(void) {
   struct rtcdate t;
   cmostime(&t);
