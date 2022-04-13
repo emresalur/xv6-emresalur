@@ -1,10 +1,9 @@
 #define N 624
 #define M 397
-#define MATRIX_A 0x9908b0df   /* constant vector a */
-#define UPPER_MASK 0x80000000 /* most significant w-r bits */
-#define LOWER_MASK 0x7fffffff /* least significant r bits */
+#define MATRIX_A 0x9908b0df   
+#define UPPER_MASK 0x80000000
+#define LOWER_MASK 0x7fffffff
 
-/* Tempering parameters */   
 #define TEMPERING_MASK_B 0x9d2c5680
 #define TEMPERING_MASK_C 0xefc60000
 #define TEMPERING_SHIFT_U(y)  (y >> 11)
@@ -14,10 +13,9 @@
 
 #define RAND_MAX 0x7fffffff
 
-static unsigned long mt[N]; /* the array for the state vector  */
-static int mti=N+1; /* mti==N+1 means mt[N] is not initialized */
+static unsigned long mt[N];
+static int mti=N+1; 
 
-/* initializing the array with a NONZERO seed */
 void
 sgenrand(unsigned long seed)
 {
