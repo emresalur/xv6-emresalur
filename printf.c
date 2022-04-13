@@ -46,8 +46,6 @@ printlong(int fd, unsigned long long xx, int base, int sgn)
     printint(fd, lower, 16, 0);
 }
 
-// Print to the given fd. Only understands %d, %x, %p, %s.
-// bdg 10/05/2015: Add %l
 void
 printf(int fd, const char *fmt, ...)
 {
@@ -92,7 +90,6 @@ printf(int fd, const char *fmt, ...)
       } else if(c == '%'){
         putc(fd, c);
       } else {
-        // Unknown % sequence.  Print it to draw attention.
         putc(fd, '%');
         putc(fd, c);
       }
