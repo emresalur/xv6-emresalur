@@ -25,16 +25,14 @@
 #define NUM_GROUPS 2
 
 static unsigned int loops = 100;
-static int use_pipes = 1; // Use Pipe mode
-//static int pollfd = 0; // 0: not used, 1: used
-//static unsigned int *pollfd[512];
+static int use_pipes = 1; 
 static int fd_count = 0;
 
 
 struct pollfd{
-  int fd;              /* File descriptor to poll. */
-  short int events;    /* Types of events poller cares about. */
-  short int revents;   /* Types of events that actually occurred. */
+  int fd;              
+  short int events;   
+  short int revents;   
 }pollfd[512];
 
 
@@ -101,7 +99,6 @@ static void ready(int ready_out, int wakefd, int id, int caller)
     if(DEBUG) checkEvents(id, pollfd[id].events, caller, "ready");
   }else if(caller == RECEIVER){
     pollfd[id].events = FREE;
-    //while(getticks() < TIMEOUT);
     if(DEBUG) checkEvents(id, pollfd[id].events, caller, "ready");
   }else{
     barf("Failed being ready.");
@@ -185,10 +182,8 @@ static unsigned int group(unsigned int num_fds,
   for (i = 0; i < num_fds; i++) {
     int fds[2];
 
-    /* Create the pipe between client and server */
     fdpair(fds);
 
-    /* Fork the receiver. */
     switch (fork()) {
     case -1: barf("fork()");
     case 0:
@@ -202,7 +197,6 @@ static unsigned int group(unsigned int num_fds,
     close(fds[0]);
   }
 
-  /* Now we have all the fds, fork the senders */
   for (i = 0; i < num_fds; i++) {
     switch (fork()) {
     case -1: barf("fork()");
@@ -231,7 +225,7 @@ int main(int argc, char *argv[])
   argc--;
   argv++;
 
-  num_groups = NUM_GROUPS; // TODO: This may seriously be considered.
+  num_groups = NUM_GROUPS; 
 
   fdpair(readyfds);
   fdpair(wakefds);
@@ -253,7 +247,7 @@ int main(int argc, char *argv[])
 
   for (i = 0; i < total_children; i++) {
 
-    wait(); // Waiting for that all child's tasks finish.
+    wait();
 
   }
   
