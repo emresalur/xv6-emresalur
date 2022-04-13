@@ -42,7 +42,6 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
   if(*pde & PTE_P){
     pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
   } else {
-    // No page table at this pde, so make one (if caller didn't forbid it)
     if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
       return 0;
     // Make sure all those PTE_P bits are zero.
@@ -63,10 +62,6 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 {
   char *a, *last;
   pte_t *pte;
-#ifdef TRACE_MAPPAGES
-  cprintf("mappages for pgdir %p, va %p, size 0x%x, pa 0x%x, perm %x\n",
-       pgdir, va, size, pa, perm);
-#endif
 
   a = (char*)PGROUNDDOWN((uint)va);
   last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
@@ -74,7 +69,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
     if((pte = walkpgdir(pgdir, a, 1)) == 0)
       return -1;
     if(*pte & PTE_P)
-      panic("remap"); // means we're trying to map something already mapped
+      panic("remap");
     *pte = pa | perm | PTE_P;
     if(a == last)
       break;
@@ -92,8 +87,8 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 //
 // setupkvm() and exec() set up every page table like this:
 //
-//   0x1000..KERNBASE: user memory (text+data+stack+heap), mapped to
-//                     phys memory allocated by the kernel
+//   0..KERNBASE: user memory (text+data+stack+heap), mapped to
+//                phys memory allocated by the kernel
 //   KERNBASE..KERNBASE+EXTMEM: mapped to 0..EXTMEM (for I/O space)
 //   KERNBASE+EXTMEM..data: mapped to EXTMEM..V2P(data)
 //                for the kernel's instructions and r/o data
@@ -113,7 +108,7 @@ static struct kmap {
   uint phys_end;
   int perm;
 } kmap[] = {
- { (void*)KERNBASE, 0,        EXTMEM,    PTE_W}, // I/O space starts at phys addr 0
+ { (void*)KERNBASE, 0,             EXTMEM,    PTE_W}, // I/O space
  { (void*)KERNLINK, V2P(KERNLINK), V2P(data), 0},     // kern text+rodata
  { (void*)data,     V2P(data),     PHYSTOP,   PTE_W}, // kern data+memory
  { (void*)DEVSPACE, DEVSPACE,      0,         PTE_W}, // more devices
@@ -182,7 +177,7 @@ switchuvm(struct proc *p)
   popcli();
 }
 
-// Load the initcode into address 0x1000 of pgdir.
+// Load the initcode into address 0 of pgdir.
 // sz must be less than a page.
 void
 inituvm(pde_t *pgdir, char *init, uint sz)
@@ -193,9 +188,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
     panic("inituvm: more than a page");
   mem = kalloc();
   memset(mem, 0, PGSIZE);
-  // map the new page at address 0x1000
-  // mappages(pgdir, va, size, pa, perm)
-  mappages(pgdir, (void*)0x1000, PGSIZE, V2P(mem), PTE_W|PTE_U);
+  mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
 }
 
@@ -223,53 +216,53 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
-// Allocate page tables and physical memory to grow process from oldvlimit to
-// newvlimit, which need not be page aligned.  Returns new size or 0 on error.
+// Allocate page tables and physical memory to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
 int
-allocuvm(pde_t *pgdir, uint vbase, uint oldvlimit, uint newvlimit)
+allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   char *mem;
   uint a;
 
-  if(newvlimit >= KERNBASE)
+  if(newsz >= KERNBASE)
     return 0;
-  if(newvlimit < oldvlimit)
-    return oldvlimit;
+  if(newsz < oldsz)
+    return oldsz;
 
-  a = PGROUNDUP(oldvlimit);
-  for(; a < newvlimit; a += PGSIZE){
+  a = PGROUNDUP(oldsz);
+  for(; a < newsz; a += PGSIZE){
     mem = kalloc();
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
-      deallocuvm(pgdir, newvlimit, oldvlimit);
+      deallocuvm(pgdir, newsz, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
-      deallocuvm(pgdir, newvlimit, oldvlimit);
+      deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
       return 0;
     }
   }
-  return newvlimit;
+  return newsz;
 }
 
-// Deallocate user pages to bring the process vlimit from oldvlimit to
-// newvlimit.  oldvlimit and newvlimit need not be page-aligned, nor
-// does newvlimit need to be less than oldvlimit.  oldvlimit can be larger
-// than the actual process size.  Returns the new process size.
+// Deallocate user pages to bring the process size from oldsz to
+// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+// need to be less than oldsz.  oldsz can be larger than the actual
+// process size.  Returns the new process size.
 int
-deallocuvm(pde_t *pgdir, uint oldvlimit, uint newvlimit)
+deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   pte_t *pte;
   uint a, pa;
 
-  if(newvlimit >= oldvlimit)
-    return oldvlimit;
+  if(newsz >= oldsz)
+    return oldsz;
 
-  a = PGROUNDUP(newvlimit);
-  for(; a  < oldvlimit; a += PGSIZE){
+  a = PGROUNDUP(newsz);
+  for(; a  < oldsz; a += PGSIZE){
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
@@ -282,7 +275,7 @@ deallocuvm(pde_t *pgdir, uint oldvlimit, uint newvlimit)
       *pte = 0;
     }
   }
-  return newvlimit;
+  return newsz;
 }
 
 // Free a page table and all the physical memory pages
@@ -320,7 +313,7 @@ clearpteu(pde_t *pgdir, char *uva)
 // Given a parent process's page table, create a copy
 // of it for a child.
 pde_t*
-copyuvm(pde_t *pgdir, uint vbase, uint vlimit)
+copyuvm(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
@@ -329,7 +322,7 @@ copyuvm(pde_t *pgdir, uint vbase, uint vlimit)
 
   if((d = setupkvm()) == 0)
     return 0;
-  for(i = PGSIZE; i < vlimit; i += PGSIZE){
+  for(i = PGSIZE; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
@@ -392,10 +385,76 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   return 0;
 }
 
-//PAGEBREAK!
-// Blank page.
-//PAGEBREAK!
-// Blank page.
-//PAGEBREAK!
-// Blank page.
+//mprotect system call makes page table entries only readable, non-writable
+int
+mprotect(void *addr, int len){
+  struct proc *curproc = myproc();
+  if(len <= 0){
+    cprintf("\nwrong len\n");
+    return -1;
+  }
+  if((int)(((int) addr) % PGSIZE )  != 0){
+    cprintf("\nwrong addr %p\n", addr);
+    return -1;
+  }
+  pte_t *pte;
+  pte = walkpgdir(curproc->pgdir, addr, 0);
+  if (*pte)
+  {
+    int i;
+    for (i = (int) addr; i < ((int) addr + (len) *PGSIZE); i+= PGSIZE)
+    {
+      pte = walkpgdir(curproc->pgdir,(void*) i, 0);
+      if( ((*pte & PTE_U) != 0) && ((*pte & PTE_P) != 0) ){
+        *pte = (*pte) & (~PTE_W) ;
+        cprintf("\nPTR %p:", pte);
+      } else {
+        return -1;
+      }
+    }
+  }
+  lcr3(V2P(curproc->pgdir));  
+  
+return 0;
+}
 
+//mprotect system call makes page table entries both readable and writable
+int
+munprotect(void *addr, int len){
+  struct proc *curproc = myproc();
+  if(len <= 0){
+    cprintf("\nwrong len\n");
+    return -1;
+  }
+  if((int)(((int) addr) % PGSIZE )  != 0){
+    cprintf("\nwrong addr %p\n", addr);
+    return -1;
+  }
+  pte_t *pte;
+  pte = walkpgdir(curproc->pgdir, addr, 0);
+  if (*pte)
+  {
+    int i;
+    for (i = (int) addr; i < ((int) addr + (len) *PGSIZE); i+= PGSIZE)
+    {
+      pte = walkpgdir(curproc->pgdir,(void*) i, 0);
+      if( ((*pte & PTE_U) != 0) && ((*pte & PTE_P) != 0) ){
+        *pte = (*pte) | (PTE_W) ;
+        cprintf("\nPTR %p:", pte);
+      } else {
+        return -1;
+      }
+    }
+  }
+  lcr3(V2P(curproc->pgdir));
+  
+  return 0;
+}
+
+
+//PAGEBREAK!
+// Blank page.
+//PAGEBREAK!
+// Blank page.
+//PAGEBREAK!
+// Blank page.
