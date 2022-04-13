@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "pstat.h"
 
 int
 sys_fork(void)
@@ -50,7 +51,7 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->vlimit;
+  addr = myproc()->sz;
   if(growproc(n) < 0)
     return -1;
   return addr;
@@ -88,4 +89,59 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+int
+sys_gettime(void) {
+  struct rtcdate *d;
+  if (argptr(0, (char **)&d, sizeof(struct rtcdate)) < 0)
+      return -1;
+  cmostime(d);
+  return 0;
+}
+
+int
+sys_settickets(void) {
+  int n;
+  if(argint(0, &n) < 0) {
+    return -1;
+  }
+  else {
+    settickets(n);
+  }
+  return 0;
+}
+
+int
+sys_getpinfo(void){
+    struct pstat *d;
+  if (argptr(0, (char **)&d, sizeof(struct pstat)) < 0)
+      return -1;
+  getpinfo(d);
+  return 0;
+}
+
+int
+sys_getreadcount(void){
+  return getreadcount();
+}
+
+int
+sys_mprotect(void){
+  int d;
+  int n = 0;
+  if(argint(0, &d)<0 || argint(1, &n)<0)
+    return -1;
+  return mprotect((void *)d,n);
+
+}
+
+int
+sys_munprotect(void){
+  int d;
+  int n = 0;
+  if(argint(0, &d)<0 || argint(1, &n)<0)
+    return -1;
+  return munprotect((void *)d,n);
+
 }
